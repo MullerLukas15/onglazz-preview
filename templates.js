@@ -9,7 +9,8 @@
  *   siteImage   stejný obrázek na onglazz.cz (použije ho záložka bez hostingu)
  *   size        šířka = výška plátna (rozměr produktové fotky)
  *   photoArea   kam patří fotka zákazníka (circle: cx, cy, r / rect: x, y, w, h, radius)
- *   fields      pole formuláře: key = klíč z databáze, label = nadpis pole na webu
+ *   fields      pole formuláře: key = klíč z databáze, label = nadpis pole na webu,
+ *               type = text | photo | swatch (výběr ze čtverečků, např. barva)
  *   fonts       písma, která se mají načíst před vykreslením
  *   draw        vlastní vykreslení – každý produkt může vypadat jinak
  */
@@ -200,5 +201,114 @@
     };
   })();
 
+  // ---------------------------------------------------------------------------
+  // Vinyl s vlastní fotkou – Velvet
+  // Barevný prstenec kolem kulaté fotky, jméno zahnuté do oblouku vlevo dole.
+  // Barvu prstence kreslíme sami podle zvoleného čtverečku, fotka produktu je jen jedna (červená).
+  // ---------------------------------------------------------------------------
+  var vinylVelvet = (function () {
+    var FONT = '"Century Schoolbook", Georgia, "Times New Roman", serif';
+    var C = { cx: 624, cy: 559.5 };
+    var RING = 240;                 // vnější okraj prstence, o kousek větší, aby nezůstal červený lem
+    var PHOTO = 195;                // kruh s fotkou
+    var HOLE = { cx: 624.5, cy: 557.5, r: 16 };
+    // Hodnoty nalezené porovnáním s produktovou fotkou (písmo Century Schoolbook z onglazz.cz).
+    var ARC = {
+      baseline: 209,                // poloměr účaří textu (písmena míří vrcholy do středu)
+      center: 130.5,                // střed textu ve stupních (0 = vpravo, 90 = dole)
+      size: 52,                     // velikost písma, zmenší se u dlouhých jmen
+      tracking: 1,                  // mezera navíc mezi písmeny v px
+      maxSpan: 150                  // nejdelší oblouk ve stupních
+    };
+
+    function placeholder(ctx, b) {
+      var g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+      g.addColorStop(0, '#cfd6dc');
+      g.addColorStop(1, '#8e969d');
+      ctx.fillStyle = g;
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.textAlign = 'center';
+      ctx.font = '600 22px "Proxima Nova", "Montserrat", sans-serif';
+      ctx.fillText('Nahrajte fotku', b.x + b.w / 2, b.y + b.h * 0.3);
+    }
+
+    function ring(ctx, color) {
+      H.circlePath(ctx, C.cx, C.cy, RING);
+      ctx.fillStyle = color;
+      ctx.fill();
+      // na fotce je prstenec o kousek tmavší než barva čtverečku (světlo scény)
+      ctx.fillStyle = 'rgba(0,0,0,0.07)';
+      ctx.fill();
+    }
+
+    function hole(ctx) {
+      var ringG = ctx.createLinearGradient(HOLE.cx - HOLE.r, HOLE.cy - HOLE.r, HOLE.cx + HOLE.r, HOLE.cy + HOLE.r);
+      ringG.addColorStop(0, '#c9c3b8');
+      ringG.addColorStop(1, '#8a857c');
+      H.circlePath(ctx, HOLE.cx, HOLE.cy, HOLE.r);
+      ctx.fillStyle = ringG;
+      ctx.fill();
+      var inner = ctx.createRadialGradient(HOLE.cx - HOLE.r * 0.2, HOLE.cy - HOLE.r * 0.2, 0, HOLE.cx, HOLE.cy, HOLE.r * 0.76);
+      inner.addColorStop(0, '#2a2b2c');
+      inner.addColorStop(1, '#0c0d0e');
+      H.circlePath(ctx, HOLE.cx, HOLE.cy, HOLE.r * 0.76);
+      ctx.fillStyle = inner;
+      ctx.fill();
+    }
+
+    // Text po oblouku zleva dolů; vrcholy písmen míří do středu desky.
+    function arcText(ctx, text) {
+      var chars = Array.from(text);
+      var size = ARC.size, widths, total, rMid;
+      for (;;) {
+        ctx.font = '400 ' + size + 'px ' + FONT;
+        widths = chars.map(function (ch) { return ctx.measureText(ch).width + ARC.tracking; });
+        total = widths.reduce(function (a, b) { return a + b; }, 0) - ARC.tracking;
+        rMid = ARC.baseline - size * 0.35;
+        if (total / rMid <= ARC.maxSpan * Math.PI / 180 || size <= 24) break;
+        size -= 2;
+      }
+      var start = ARC.center * Math.PI / 180 + total / rMid / 2;
+      var pos = 0;
+      ctx.save();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      chars.forEach(function (ch, i) {
+        var a = start - (pos + (widths[i] - ARC.tracking) / 2) / rMid;
+        ctx.save();
+        ctx.translate(C.cx + ARC.baseline * Math.cos(a), C.cy + ARC.baseline * Math.sin(a));
+        ctx.rotate(a - Math.PI / 2);
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+        pos += widths[i];
+      });
+      ctx.restore();
+    }
+
+    return {
+      background: 'images/vinylova-deska-velvet.webp',
+      siteImage: '/api/public-images/924/data', // stejná fotka v e-shopu (pro test bez hostingu)
+      size: 1254,
+      photoArea: { shape: 'circle', cx: C.cx, cy: C.cy, r: PHOTO },
+      fields: {
+        name: { type: 'text', key: 'vinylova-deska-velvet-text-1-CZ', label: 'Text', fallback: 'Alex & Betty', maxLength: 35 },
+        color: { type: 'swatch', key: 'vinylova-deska-velvet-barva-CZ', label: 'Barva produktu', fallback: '#a2141a' },
+        photo: { type: 'photo', key: 'vinylova-deska-velvet-fotka-1-CZ' }
+      },
+      fonts: ['400 52px ' + FONT],
+      arc: ARC, // umístění textu (lze doladit i za běhu přes OnglazzPreview.templates)
+      draw: function (ctx, s) {
+        ctx.drawImage(s.background, 0, 0, s.size, s.size);
+        ring(ctx, s.texts.color);
+        H.drawPhoto(ctx, s.area, s.photo, s.view, placeholder);
+        hole(ctx);
+        arcText(ctx, s.texts.name.replace(/ /g, ' '));
+      }
+    };
+  })();
+
   P.register('vinylova-deska-skladba', vinylSkladba);
+  P.register('vinylova-deska-velvet', vinylVelvet);
 })(window.OnglazzPreview);

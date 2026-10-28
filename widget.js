@@ -158,6 +158,27 @@
     return null;
   }
 
+  // Výběr ze čtverečků (např. barva produktu): obal pole + zvolená položka má třídu item-active.
+  function findSwatchBox(spec) {
+    if (spec.key) {
+      var byKey = document.querySelector('[data-config-key="' + spec.key + '"]');
+      if (byKey) return byKey;
+    }
+    var heads = document.querySelectorAll('strong, label, b');
+    for (var i = 0; i < heads.length; i++) {
+      if (norm(heads[i].textContent) === norm(spec.label)) return heads[i].parentElement;
+    }
+    return null;
+  }
+
+  function readSwatch(spec) {
+    var box = findSwatchBox(spec);
+    var active = box && box.querySelector(spec.activeSelector || '.item-active');
+    if (!active) return '';
+    var fill = active.querySelector('[style*="background"]') || active;
+    return getComputedStyle(fill).backgroundColor || '';
+  }
+
   // ---------------------------------------------------------------------------
   // Instance náhledu
   // ---------------------------------------------------------------------------
@@ -197,12 +218,13 @@
     }
   }
 
-  // Texty pro vykreslení: co zákazník napsal → placeholder z e-shopu → záložní text šablony.
+  // Hodnoty pro vykreslení: co zákazník napsal / vybral → placeholder z e-shopu → záložní hodnota šablony.
   Preview.prototype.texts = function () {
     var out = {}, fields = this.tpl.fields;
     for (var name in fields) {
       var spec = fields[name];
       if (spec.type === 'photo') continue;
+      if (spec.type === 'swatch') { out[name] = this.values[name] || spec.fallback || ''; continue; }
       var el = this.values[name] ? null : findField(spec);
       out[name] = this.values[name] || (el && el.placeholder) || spec.fallback || '';
     }
@@ -262,15 +284,27 @@
     var fields = this.tpl.fields;
     for (var name in fields) {
       if (fields[name].type === 'photo') continue;
+      if (fields[name].type === 'swatch') { this.values[name] = readSwatch(fields[name]); continue; }
       var el = findField(fields[name]);
       if (el && el.value) this.values[name] = el.value;
     }
   };
 
+  // Čtverečky nemají input/change, po každém kliknutí se zvolená položka přečte znovu.
+  Preview.prototype.refreshSwatches = function () {
+    var fields = this.tpl.fields, changed = false;
+    for (var name in fields) {
+      if (fields[name].type !== 'swatch') continue;
+      var v = readSwatch(fields[name]);
+      if (v && v !== this.values[name]) { this.values[name] = v; changed = true; }
+    }
+    if (changed) this.render();
+  };
+
   Preview.prototype.onField = function (el) {
     var fields = this.tpl.fields;
     for (var name in fields) {
-      if (!matchField(el, fields[name])) continue;
+      if (fields[name].type === 'swatch' || !matchField(el, fields[name])) continue;
       if (fields[name].type === 'photo') { if (el.files && el.files[0]) this.setPhoto(el.files[0]); }
       else { var p = {}; p[name] = el.value; this.set(p); }
       return;
@@ -390,6 +424,17 @@
 
   document.addEventListener('input', onFieldEvent, true);
   document.addEventListener('change', onFieldEvent, true);
+  // Čtverečky (barva apod.): e-shop přepne třídu item-active až po odpovědi serveru,
+  // proto hlídáme změny tříd a zvolenou položku pak přečteme znovu.
+  var swatchQueued = false;
+  new MutationObserver(function () {
+    if (swatchQueued || !instances.length) return;
+    swatchQueued = true;
+    requestAnimationFrame(function () {
+      swatchQueued = false;
+      instances.forEach(function (p) { p.refreshSwatches(); });
+    });
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true });
 
   window.addEventListener('onglazz:input', function (e) {
     instances.forEach(function (p) { p.set(e.detail || {}); });

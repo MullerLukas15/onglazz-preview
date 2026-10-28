@@ -73,7 +73,7 @@ Pak otevřete produkt na onglazz.cz a klikněte na záložku. Náhled nahradí h
 2. Na GitHubu otevřete `templates.js` → ikona tužky → vložte novou verzi → **Commit changes**.
    Novou fotku produktu nahrajte do složky `images/` (**Add file → Upload files**).
 3. Cloudflare web do minuty sám přenasadí. Záložka `zalozka-hosting.txt` načte novou
-   verzi hned, zákazníci na webu ji uvidí nejpozději do 5 minut (cache).
+   verzi hned, zákazníci na webu ji uvidí nejpozději do 10 minut (cache GitHub Pages).
 
 Pokud se změna nepovede, na Cloudflare v **Deployments** jde jedním kliknutím vrátit
 předchozí verzi.
