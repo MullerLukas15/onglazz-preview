@@ -413,6 +413,188 @@
     };
   })();
 
+  // ---------------------------------------------------------------------------
+  // Kostičkové fotky (Černá, Červená, Klasická)
+  // Fotka je vytištěná přes kostičky, takže přes ni kreslíme vodorovné spáry.
+  // Podklady Černé a Červené jsou upravené produktové fotky bez původních
+  // iniciál a podpisu (images/kostickova-fotka-*.webp).
+  // ---------------------------------------------------------------------------
+  // Výšky vodorovných spár změřené v bílém okraji kostky (stejné na všech třech fotkách).
+  var BRICK_SEAMS = [248, 310, 372, 437, 501, 564, 628, 691, 754, 819, 883, 949, 1014, 1078, 1139, 1203];
+
+  function brickSeams(ctx, x0, x1) {
+    ctx.save();
+    BRICK_SEAMS.forEach(function (y) {
+      ctx.fillStyle = 'rgba(0,0,0,0.10)';
+      ctx.fillRect(x0, y - 2, x1 - x0, 2);          // stín nad spárou
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      ctx.fillRect(x0, y, x1 - x0, 1.3);            // světlá hrana spáry
+    });
+    ctx.restore();
+  }
+
+  function cardPlaceholder(ctx, b) {
+    var g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    g.addColorStop(0, '#d9dde1');
+    g.addColorStop(1, '#a3a9ae');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.textAlign = 'center';
+    ctx.font = '600 26px "Proxima Nova", "Montserrat", sans-serif';
+    ctx.fillText('Nahrajte fotku', b.x + b.w / 2, b.y + b.h * 0.42);
+  }
+
+  // Text se zmenší, jen když by se nevešel do maxWidth.
+  function fitFont(ctx, text, family, size, maxWidth) {
+    for (; size > 20; size -= 1) {
+      ctx.font = '400 ' + size + 'px ' + family;
+      if (ctx.measureText(text).width <= maxWidth) break;
+    }
+    return size;
+  }
+
+  var ALLURA = '"Allura", "Segoe Script", cursive';
+  var INITIAL_FONT = '"Century Schoolbook", Georgia, "Times New Roman", serif';
+
+  // Karta s fotkou, dvěma iniciálami a podpisem písmem Allura s bílým obrysem.
+  function makeCard(o) {
+    function initial(ctx, text, p, rotated) {
+      ctx.save();
+      var size = fitFont(ctx, text, INITIAL_FONT, o.initialSize, 46);
+      ctx.font = '400 ' + size + 'px ' + INITIAL_FONT;
+      ctx.fillStyle = o.ink;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.translate(p.x, p.y);
+      if (rotated) ctx.rotate(Math.PI); // spodní iniciála je vzhůru nohama jako na hrací kartě
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    }
+
+    function caption(ctx, text) {
+      ctx.save();
+      var size = fitFont(ctx, text, ALLURA, o.caption.size, o.caption.maxWidth);
+      ctx.font = '400 ' + size + 'px ' + ALLURA;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.lineJoin = 'round';
+      // pod textem stejný text s bílou výplní a širokým bílým okrajem
+      ctx.strokeStyle = '#fff';
+      ctx.fillStyle = '#fff';
+      ctx.lineWidth = 8;
+      ctx.strokeText(text, o.caption.x, o.caption.y);
+      ctx.fillText(text, o.caption.x, o.caption.y);
+      // samotný text; tenký obrys stejné barvy ho zesílí jako na produktové fotce
+      ctx.fillStyle = o.ink;
+      ctx.strokeStyle = o.ink;
+      ctx.lineWidth = 0.8;
+      ctx.fillText(text, o.caption.x, o.caption.y);
+      ctx.strokeText(text, o.caption.x, o.caption.y);
+      ctx.restore();
+    }
+
+    var A = o.photo;
+    return {
+      background: o.background,
+      siteImage: o.siteImage,
+      size: 1254,
+      photoArea: { shape: 'rect', x: A.x, y: A.y, w: A.w, h: A.h, radius: A.radius },
+      fields: o.fields,
+      css: ['https://fonts.googleapis.com/css2?family=Allura&display=swap'],
+      fonts: ['400 80px ' + ALLURA, '400 57px ' + INITIAL_FONT],
+      draw: function (ctx, s) {
+        ctx.drawImage(s.background, 0, 0, s.size, s.size);
+        H.drawPhoto(ctx, s.area, s.photo, s.view, cardPlaceholder);
+        // spáry jen přes fotku, bílý okraj je má už na podkladu
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(A.x, A.y, A.w, A.h, A.radius) : ctx.rect(A.x, A.y, A.w, A.h);
+        ctx.clip();
+        brickSeams(ctx, A.x, A.x + A.w);
+        ctx.restore();
+        initial(ctx, s.texts.initial1, o.initial1, false);
+        initial(ctx, s.texts.initial2, o.initial2, true);
+        caption(ctx, s.texts.caption.replace(/ /g, ' '));
+      }
+    };
+  }
+
+  var kostickaCerna = makeCard({
+    background: 'images/kostickova-fotka-cerna.webp',
+    siteImage: '/api/public-images/902/data',
+    photo: { x: 392, y: 261, w: 491, h: 819, radius: 24 },
+    ink: 'rgb(20,20,20)',
+    initialSize: 57,
+    initial1: { x: 361, y: 285 },
+    initial2: { x: 905, y: 1102 },
+    caption: { x: 622.5, y: 1103.5, size: 80, maxWidth: 470 },
+    fields: {
+      caption: { type: 'text', key: 'kostickova-desticka-cerna-text-1-CZ', label: 'Text ve spodní části', fallback: 'Anička a Ondra', maxLength: 35 },
+      initial1: { type: 'text', key: 'kostickova-desticka-cerna-inicial-1-CZ', label: 'První iniciál', fallback: 'A', maxLength: 2 },
+      initial2: { type: 'text', key: 'kostickova-desticka-cerna-inicial-2-CZ', label: 'Druhý iniciál', fallback: 'O', maxLength: 2 },
+      photo: { type: 'photo', key: 'kostickova-desticka-cerna-fotka-1-CZ' }
+    }
+  });
+
+  var kostickaCervena = makeCard({
+    background: 'images/kostickova-fotka-cervena.webp',
+    siteImage: '/api/public-images/901/data',
+    photo: { x: 398, y: 294, w: 484, h: 836, radius: 24 },
+    ink: 'rgb(214,31,38)',
+    initialSize: 58,
+    initial1: { x: 367, y: 304 },
+    initial2: { x: 905, y: 1118 },
+    caption: { x: 628.5, y: 1124.5, size: 78.5, maxWidth: 470 },
+    fields: {
+      // klíč textu je v databázi sdílený s Klasickou, proto "klasicka"
+      caption: { type: 'text', key: 'kostickova-desticka-klasicka-text-1-CZ', label: 'Text ve spodní části', fallback: 'Eliška a Patrik', maxLength: 35 },
+      initial1: { type: 'text', key: 'kostickova-desticka-cervena-inicial-1-CZ', label: 'První iniciál', fallback: 'E', maxLength: 2 },
+      initial2: { type: 'text', key: 'kostickova-desticka-cervena-inicial-2-CZ', label: 'Druhý iniciál', fallback: 'P', maxLength: 2 },
+      photo: { type: 'photo', key: 'kostickova-desticka-cervena-fotka-1-CZ' }
+    }
+  });
+
+  // Klasická: fotka přes celou přední stranu kostky, včetně schodovitého vršku
+  // a kostičky, kterou drží ruka.
+  var FACE = [
+    [505, 98, 236, 76],    // kostička v ruce
+    [306, 180, 210, 62],   // vršek vlevo
+    [516, 226, 228, 16],   // vršek uprostřed (níž)
+    [743, 188, 227, 54],   // vršek vpravo
+    [305, 238, 664, 967]   // hlavní plocha
+  ];
+  var kostickaKlasicka = {
+    background: 'images/kostickova-fotka-klasicka.webp',
+    siteImage: '/api/public-images/903/data',
+    size: 1254,
+    photoArea: {
+      shape: 'path', x: 305, y: 98, w: 665, h: 1107,
+      path: function (ctx) { FACE.forEach(function (r) { ctx.rect(r[0], r[1], r[2], r[3]); }); }
+    },
+    fields: {
+      photo: { type: 'photo', key: 'kostickova-desticka-klasicka-fotka-1-CZ' }
+    },
+    fonts: ['600 26px "Proxima Nova", "Montserrat", sans-serif'],
+    draw: function (ctx, s) {
+      ctx.drawImage(s.background, 0, 0, s.size, s.size);
+      H.drawPhoto(ctx, s.area, s.photo, s.view, cardPlaceholder);
+      ctx.save();
+      ctx.beginPath();
+      s.area.path(ctx);
+      ctx.clip();
+      brickSeams(ctx, 305, 970);
+      // svislé spoje horních kostiček a obrys kostičky v ruce
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      ctx.fillRect(420, 180, 1.3, 68);
+      ctx.fillRect(815, 188, 1.3, 60);
+      ctx.restore();
+    }
+  };
+
+  P.register('kostickova-fotka-cerna', kostickaCerna);
+  P.register('kostickova-fotka-cervena', kostickaCervena);
+  P.register('kostickova-fotka-klasicka', kostickaKlasicka);
   P.register('vinylova-deska-skladba', vinylSkladba);
   P.register('vinylova-deska-velvet', vinylVelvet);
   P.register('vinylova-deska-klasicka', vinylKlasicka);

@@ -67,11 +67,28 @@
     return imageCache[url];
   }
 
-  // Fotka zákazníka vyplní oblast (kruh nebo obdélník) jako "cover",
+  // Písma, která web nemá (např. Allura): šablona uvede odkaz na Google Fonts.
+  var cssCache = {};
+  function loadCss(url) {
+    if (!cssCache[url]) {
+      cssCache[url] = new Promise(function (resolve) {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        link.onload = link.onerror = function () { resolve(); };
+        document.head.appendChild(link);
+      });
+    }
+    return cssCache[url];
+  }
+
+  // Fotka zákazníka vyplní oblast (kruh, obdélník nebo vlastní tvar) jako "cover",
   // posunutá a přiblížená podle view. Bez fotky se vykreslí zástupná plocha.
+  // Vlastní tvar: shape 'path' + x, y, w, h (ohraničení) + path(ctx).
   function areaPath(ctx, A) {
     if (A.shape === 'circle') return circlePath(ctx, A.cx, A.cy, A.r);
     ctx.beginPath();
+    if (A.shape === 'path') return A.path(ctx);
     if (ctx.roundRect && A.radius) ctx.roundRect(A.x, A.y, A.w, A.h, A.radius);
     else ctx.rect(A.x, A.y, A.w, A.h);
   }
@@ -212,9 +229,11 @@
     // bez hostingu (samostatná záložka) se použije fotka přímo z e-shopu
     loadImage(BASE ? tpl.background : (tpl.siteImage || tpl.background)).then(function (img) { self.background = img; self.render(); }, console.warn);
     if (document.fonts && document.fonts.load && tpl.fonts) {
-      Promise.all(tpl.fonts.map(function (f) {
-        return document.fonts.load(f, 'Léto ěščřžýáíé 0123').catch(function () {});
-      })).then(function () { self.render(); });
+      Promise.all((tpl.css || []).map(loadCss)).then(function () {
+        return Promise.all(tpl.fonts.map(function (f) {
+          return document.fonts.load(f, 'Léto ěščřžýáíé 0123').catch(function () {});
+        }));
+      }).then(function () { self.render(); });
     }
   }
 
