@@ -212,12 +212,13 @@
     var RING = 240;                 // vnější okraj prstence, o kousek větší, aby nezůstal červený lem
     var PHOTO = 195;                // kruh s fotkou
     var HOLE = { cx: 624.5, cy: 557.5, r: 16 };
-    // Hodnoty nalezené porovnáním s produktovou fotkou (písmo Century Schoolbook z onglazz.cz).
+    // Hodnoty nalezené porovnáním s produktovou fotkou (Century Schoolbook Bold z onglazz.cz).
     var ARC = {
-      baseline: 209,                // poloměr účaří textu (písmena míří vrcholy do středu)
-      center: 130.5,                // střed textu ve stupních (0 = vpravo, 90 = dole)
-      size: 52,                     // velikost písma, zmenší se u dlouhých jmen
-      tracking: 1,                  // mezera navíc mezi písmeny v px
+      weight: 700,
+      baseline: 206,                // poloměr účaří textu (písmena míří vrcholy do středu)
+      center: 130,                  // střed textu ve stupních (0 = vpravo, 90 = dole)
+      size: 46,                     // velikost písma, zmenší se u dlouhých jmen
+      tracking: 2,                  // mezera navíc mezi písmeny v px
       maxSpan: 150                  // nejdelší oblouk ve stupních
     };
 
@@ -262,7 +263,7 @@
       var chars = Array.from(text);
       var size = ARC.size, widths, total, rMid;
       for (;;) {
-        ctx.font = '400 ' + size + 'px ' + FONT;
+        ctx.font = ARC.weight + ' ' + size + 'px ' + FONT;
         widths = chars.map(function (ch) { return ctx.measureText(ch).width + ARC.tracking; });
         total = widths.reduce(function (a, b) { return a + b; }, 0) - ARC.tracking;
         rMid = ARC.baseline - size * 0.35;
@@ -297,7 +298,7 @@
         color: { type: 'swatch', key: 'vinylova-deska-velvet-barva-CZ', label: 'Barva produktu', fallback: '#a2141a' },
         photo: { type: 'photo', key: 'vinylova-deska-velvet-fotka-1-CZ' }
       },
-      fonts: ['400 52px ' + FONT],
+      fonts: ['700 46px ' + FONT],
       arc: ARC, // umístění textu (lze doladit i za běhu přes OnglazzPreview.templates)
       draw: function (ctx, s) {
         ctx.drawImage(s.background, 0, 0, s.size, s.size);
@@ -309,6 +310,111 @@
     };
   })();
 
+  // ---------------------------------------------------------------------------
+  // Společné pro jednoduché vinyly (Klasická, Text)
+  // ---------------------------------------------------------------------------
+  function photoPlaceholder(ctx, b) {
+    var g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    g.addColorStop(0, '#cfd6dc');
+    g.addColorStop(1, '#8e969d');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.textAlign = 'center';
+    ctx.font = '600 22px "Proxima Nova", "Montserrat", sans-serif';
+    ctx.fillText('Nahrajte fotku', b.x + b.w / 2, b.y + b.h * 0.3);
+  }
+
+  function vinylHole(ctx, h) {
+    var ring = ctx.createLinearGradient(h.cx - h.r, h.cy - h.r, h.cx + h.r, h.cy + h.r);
+    ring.addColorStop(0, '#c9c3b8');
+    ring.addColorStop(1, '#8a857c');
+    H.circlePath(ctx, h.cx, h.cy, h.r);
+    ctx.fillStyle = ring;
+    ctx.fill();
+    var inner = ctx.createRadialGradient(h.cx - h.r * 0.2, h.cy - h.r * 0.2, 0, h.cx, h.cy, h.r * 0.76);
+    inner.addColorStop(0, '#2a2b2c');
+    inner.addColorStop(1, '#0c0d0e');
+    H.circlePath(ctx, h.cx, h.cy, h.r * 0.76);
+    ctx.fillStyle = inner;
+    ctx.fill();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vinyl s vlastní fotkou – Klasická (jen kulatá fotka)
+  // ---------------------------------------------------------------------------
+  var vinylKlasicka = {
+    background: 'images/vinylova-deska-klasicka.webp',
+    siteImage: '/api/public-images/925/data', // stejná fotka v e-shopu (pro test bez hostingu)
+    size: 1254,
+    photoArea: { shape: 'circle', cx: 627, cy: 560, r: 230.5 },
+    fields: {
+      photo: { type: 'photo', key: 'vinylova-deska-klasicka-fotka-1-CZ' }
+    },
+    fonts: ['600 22px "Proxima Nova", "Montserrat", sans-serif'],
+    draw: function (ctx, s) {
+      ctx.drawImage(s.background, 0, 0, s.size, s.size);
+      H.drawPhoto(ctx, s.area, s.photo, s.view, photoPlaceholder);
+      vinylHole(ctx, { cx: 625.8, cy: 557.5, r: 16 });
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Vinyl s vlastní fotkou – Text
+  // Bílý text po vinylu nad fotkou, začíná nahoře a vede po směru hodinových ručiček.
+  // Text se nezmenšuje, delší text prostě pokračuje dál dokola.
+  // ---------------------------------------------------------------------------
+  var vinylText = (function () {
+    var FONT = '"Proxima Nova", "Montserrat", "Helvetica Neue", Arial, sans-serif';
+    // Hodnoty nalezené porovnáním s produktovou fotkou. Kruh textu je o kousek
+    // posunutý proti středu desky, stejně jako na fotce.
+    var ARC = { cx: 633.3, cy: 567.5, baseline: 253, start: -88, size: 33, weight: 700, tracking: 1 };
+
+    function arcText(ctx, text) {
+      var chars = Array.from(text);
+      ctx.save();
+      ctx.font = ARC.weight + ' ' + ARC.size + 'px ' + FONT;
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      var rMid = ARC.baseline + ARC.size * 0.35, pos = 0, start = ARC.start * Math.PI / 180;
+      chars.forEach(function (ch) {
+        var w = ctx.measureText(ch).width;
+        var a = start + (pos + w / 2) / rMid;
+        ctx.save();
+        ctx.translate(ARC.cx + ARC.baseline * Math.cos(a), ARC.cy + ARC.baseline * Math.sin(a));
+        ctx.rotate(a + Math.PI / 2); // vrcholy písmen ven od středu
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+        pos += w + ARC.tracking;
+      });
+      ctx.restore();
+    }
+
+    return {
+      // Fotka produktu Text má původní text natištěný na vinylu. Fotka Klasické je
+      // mimo štítek stejná, jen bez textu, proto ji použijeme jako podklad.
+      background: 'images/vinylova-deska-klasicka.webp',
+      siteImage: '/api/public-images/925/data', // stejná fotka v e-shopu (pro test bez hostingu)
+      size: 1254,
+      photoArea: { shape: 'circle', cx: 627, cy: 560, r: 230.5 },
+      fields: {
+        text: { type: 'text', key: 'vinylova-deska-text-text-1-CZ', label: 'Text', fallback: 'S tebou je svět krásnější', maxLength: 35 },
+        photo: { type: 'photo', key: 'vinylova-deska-text-fotka-1-CZ' }
+      },
+      fonts: ['700 33px ' + FONT],
+      arc: ARC,
+      draw: function (ctx, s) {
+        ctx.drawImage(s.background, 0, 0, s.size, s.size);
+        H.drawPhoto(ctx, s.area, s.photo, s.view, photoPlaceholder);
+        vinylHole(ctx, { cx: 625.8, cy: 557.5, r: 16 });
+        arcText(ctx, s.texts.text.replace(/ /g, ' '));
+      }
+    };
+  })();
+
   P.register('vinylova-deska-skladba', vinylSkladba);
   P.register('vinylova-deska-velvet', vinylVelvet);
+  P.register('vinylova-deska-klasicka', vinylKlasicka);
+  P.register('vinylova-deska-text', vinylText);
 })(window.OnglazzPreview);
