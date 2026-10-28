@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="cs">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Živý náhled vinylu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  /* Layout: produktová stránka ve dvou sloupcích (náhled | formulář), pod tím technický blok pro IT */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --stage: #ebe7df;
+    --fg: #17171a;
+    --muted: #5d5b57;
+    --line: #dcd8cf;
+    --accent: #f5c542;
+    --accent-ink: #17171a;
+    --code-bg: #1d1d21;
+    --code-fg: #ece9e1;
+    --font-display: "Montserrat", "Helvetica Neue", Arial, sans-serif;
+    --font-body: "Montserrat", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --surface: #1d1d21; --stage: #26252a; --fg: #f1efe9; --muted: #a9a59c;
+      --line: #34333a; --accent: #f5c542; --accent-ink: #17171a; --code-bg: #0d0d10; --code-fg: #ece9e1;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416; --surface: #1d1d21; --stage: #26252a; --fg: #f1efe9; --muted: #a9a59c;
+    --line: #34333a; --accent: #f5c542; --accent-ink: #17171a; --code-bg: #0d0d10; --code-fg: #ece9e1;
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  }
+  .wrap {
+    max-width: 1080px; margin: 0 auto;
+    padding-block: 28px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: 40px;
+  }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 4px 0 0; text-wrap: balance; }
+  h2 { font-weight: 700; font-size: 20px; margin: 0; text-wrap: balance; }
+
+  .product { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  @media (max-width: 760px) { .product { grid-template-columns: minmax(0, 1fr); } }
+
+  .stage { background: var(--stage); border-radius: 6px; overflow: hidden; }
+
+  .info { display: grid; gap: 18px; min-width: 0; }
+  .info p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+  .form { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px; display: grid; gap: 14px; }
+  .field { display: grid; gap: 6px; }
+  .field > span { font-weight: 700; font-size: 14px; }
+  .field input[type="text"] {
+    font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--bg); color: var(--fg);
+  }
+  .field input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  .count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; justify-self: end; }
+
+  .upload {
+    display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 4px; cursor: pointer;
+  }
+  .upload:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .upload .btn { background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 8px 14px; border-radius: 4px; white-space: nowrap; }
+  .upload .name { font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .note { font-size: 13px; color: var(--muted); }
+
+  .tech { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-top: 32px; }
+  .tech p, .tech li { max-width: 70ch; color: var(--muted); margin: 0; }
+  .tech ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+  .tech strong { color: var(--fg); }
+  pre {
+    margin: 0; background: var(--code-bg); color: var(--code-fg); font-family: var(--font-mono); font-size: 13px;
+    padding: 14px 16px; border-radius: 6px; overflow-x: auto; line-height: 1.6;
+  }
+  code { font-family: var(--font-mono); font-size: .92em; }
+
+  .order { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-top: 32px; }
+  .order-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+  .order-lead { margin: 0; color: var(--muted); max-width: 70ch; }
+  .cta {
+    font: inherit; font-weight: 700; background: var(--accent); color: var(--accent-ink);
+    border: 0; border-radius: 4px; padding: 12px 18px; cursor: pointer;
+  }
+  .cta:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .order-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; align-items: start; }
+  .order-grid figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+  .order-grid img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px; background: var(--stage); }
+  .order-grid figcaption { font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+  .order-grid figcaption strong, .order-data strong { color: var(--fg); font-size: 14px; }
+  .order-data { display: grid; gap: 8px; min-width: 0; }
+
+  /* barvy ovládání widgetu podle tématu */
+  .ogp-tools { color: var(--muted) !important; }
+</style>
+
+<div class="wrap">
+  <section class="product">
+    <div class="stage">
+      <div data-onglazz-preview="vinylova-deska-skladba"></div>
+    </div>
+
+    <div class="info">
+      <div>
+        <div class="eyebrow">Prototyp živého náhledu</div>
+        <h1>Vinyl s vlastní fotkou – Skladba</h1>
+      </div>
+      <p>Pište do polí a nahrajte vlastní fotku. Náhled vlevo se mění okamžitě a fotka se nikam neodesílá, zpracuje ji jen váš prohlížeč.</p>
+
+      <form class="form" id="product-form">
+        <label class="field">
+          <span>Název</span>
+          <input id="f-title" type="text" placeholder="Název" maxlength="45" value="Léto s tebou">
+          <small class="count" id="c-title"></small>
+        </label>
+        <label class="field">
+          <span>Interpret</span>
+          <input id="f-artist" type="text" placeholder="Interpret" maxlength="55" value="Tvoje rodinka">
+          <small class="count" id="c-artist"></small>
+        </label>
+        <div class="field">
+          <span>Nahrajte fotografii</span>
+          <label class="upload">
+            <input id="f-photo" type="file" accept="image/*">
+            <span class="btn">Vybrat fotku</span>
+            <span class="name" id="photo-name">Zatím ukázková fotka</span>
+          </label>
+        </div>
+        <div class="note">Fotku v náhledu můžete posunout tažením myší nebo prstem a přiblížit posuvníkem.</div>
+        <div class="note">Na této ukázce je místo písma Proxima Nova náhradní Montserrat. Na onglazz.cz widget použije Proxima Nova, kterou web už načítá.</div>
+      </form>
+    </div>
+  </section>
+
+  <section class="order">
+    <div class="order-head">
+      <div>
+        <div class="eyebrow">Přidání do košíku</div>
+        <h2>Co se odešle s objednávkou</h2>
+      </div>
+      <button type="button" class="cta" id="btn-export">Přidat do košíku (ukázka)</button>
+    </div>
+    <p class="order-lead">Kontrola pro výrobu: náhled celého produktu a fotka oříznutá přesně tak, jak ji zákazník umístil do štítku. Nic se nikam neodesílá.</p>
+    <div class="order-grid" id="export-out" hidden>
+      <figure>
+        <img id="out-preview" alt="Náhled produktu, jak ho viděl zákazník">
+        <figcaption><strong>Náhled produktu</strong> <span id="out-preview-meta"></span></figcaption>
+      </figure>
+      <figure>
+        <img id="out-photo" alt="Fotka oříznutá do štítku">
+        <figcaption><strong>Oříznutá fotka</strong> <span id="out-photo-meta"></span></figcaption>
+      </figure>
+      <div class="order-data">
+        <strong>Údaje k objednávce</strong>
+        <pre id="out-json"></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="tech">
+    <div class="eyebrow">Pro IT</div>
+    <h2>Jak to dostat na onglazz.cz</h2>
+    <ol>
+      <li><strong>Načíst widget</strong> jednou pro celý web, např. v <code>head.script</code> v <code>nuxt.config.js</code>. Šablony si widget načte sám.</li>
+    </ol>
+<pre>&lt;script src="https://preview.onglazz.cz/widget.js" defer&gt;&lt;/script&gt;</pre>
+    <ol start="2">
+      <li><strong>Vložit prázdný kontejner</strong> do galerie každého produktu, přes hlavní fotku. Widget podle adresy produktu najde šablonu. Produkt bez šablony nechá kontejner skrytý.</li>
+    </ol>
+<pre>&lt;div data-onglazz-preview&gt;&lt;/div&gt;</pre>
+    <ol start="3">
+      <li><strong>Klíče polí</strong> vypsat k inputům konfigurace, aby widget nezávisel na textech v adminu:</li>
+    </ol>
+<pre>&lt;input data-config-key="vinylova-deska-skladba-text-1-CZ" …&gt;</pre>
+    <ol start="4">
+      <li><strong>Před přidáním do košíku</strong> zavolat export a obrázky uložit k objednávce jako u skleněných desek:</li>
+    </ol>
+<pre>const p = OnglazzPreview.instances[0];
+if (p) {
+  const { preview, photo, crop, texts } = await p.exportForOrder();
+  // preview a photo jsou JPG (Blob), crop a texts jdou uložit jako JSON
+}</pre>
+  </section>
+</div>
+
+<script src="widget.js"></script>
+<script>
+  (function () {
+    function counter(input, out) {
+      var update = function () { out.textContent = input.value.length + ' / ' + input.maxLength; };
+      input.addEventListener('input', update); update();
+    }
+    counter(document.getElementById('f-title'), document.getElementById('c-title'));
+    counter(document.getElementById('f-artist'), document.getElementById('c-artist'));
+
+    document.getElementById('f-photo').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      document.getElementById('photo-name').textContent = f ? f.name : 'Zatím ukázková fotka';
+    });
+    document.getElementById('product-form').addEventListener('submit', function (e) { e.preventDefault(); });
+
+    // Ukázková fotka (západ slunce nad mořem), aby náhled nebyl po otevření prázdný.
+    function samplePhoto() {
+      var c = document.createElement('canvas'); c.width = 1200; c.height = 900;
+      var g = c.getContext('2d');
+      var sky = g.createLinearGradient(0, 0, 0, 620);
+      sky.addColorStop(0, '#4a6fa5'); sky.addColorStop(.55, '#f3a76b'); sky.addColorStop(1, '#f7d08a');
+      g.fillStyle = sky; g.fillRect(0, 0, 1200, 620);
+      g.fillStyle = '#fff1c9'; g.beginPath(); g.arc(600, 520, 120, 0, Math.PI * 2); g.fill();
+      var sea = g.createLinearGradient(0, 600, 0, 900);
+      sea.addColorStop(0, '#2e4a6b'); sea.addColorStop(1, '#14243a');
+      g.fillStyle = sea; g.fillRect(0, 600, 1200, 300);
+      g.fillStyle = 'rgba(255,230,170,.55)';
+      for (var i = 0; i < 14; i++) g.fillRect(600 - 140 + i * 8 + (i % 3) * 6, 620 + i * 18, 280 - i * 18, 4);
+      return new Promise(function (r) { c.toBlob(function (b) { r(new File([b], 'ukazka.jpg', { type: 'image/jpeg' })); }, 'image/jpeg', .9); });
+    }
+
+    var urls = [];
+    function kb(blob) { return Math.round(blob.size / 1024) + ' kB'; }
+    function show(img, blob) {
+      var u = URL.createObjectURL(blob);
+      urls.push(u);
+      img.src = u;
+      return new Promise(function (r) { img.onload = function () { r(img); }; });
+    }
+
+    document.getElementById('btn-export').addEventListener('click', function () {
+      var p = window.OnglazzPreview && OnglazzPreview.instances[0];
+      if (!p) return;
+      urls.forEach(URL.revokeObjectURL);
+      urls = [];
+      p.exportForOrder().then(function (res) {
+        document.getElementById('export-out').hidden = false;
+        show(document.getElementById('out-preview'), res.preview).then(function (img) {
+          document.getElementById('out-preview-meta').textContent =
+            img.naturalWidth + ' × ' + img.naturalHeight + ' px · JPG · ' + kb(res.preview);
+        });
+        if (res.photo) {
+          show(document.getElementById('out-photo'), res.photo).then(function (img) {
+            document.getElementById('out-photo-meta').textContent =
+              img.naturalWidth + ' × ' + img.naturalHeight + ' px · JPG · ' + kb(res.photo);
+          });
+        }
+        document.getElementById('out-json').textContent =
+          JSON.stringify({ texts: res.texts, crop: res.crop }, null, 2);
+      });
+    });
+
+    function start() {
+      var p = window.OnglazzPreview && OnglazzPreview.instances[0];
+      if (!p) return;
+      samplePhoto().then(function (f) { if (!p.photo) p.setPhoto(f); });
+    }
+    // šablony se načítají až po widgetu
+    if (window.OnglazzPreview) OnglazzPreview.ready.then(start);
+  })();
+</script>
