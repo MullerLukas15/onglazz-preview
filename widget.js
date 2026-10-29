@@ -156,11 +156,22 @@
     return spec.type === 'photo' ? 'input[type="file"]' : 'input[type="text"], textarea';
   }
 
+  // Pole bez klíče podle selektoru a nadpisu. Mají-li dvě pole stejný nadpis (např. dvakrát
+  // "Text"), rozliší je nth = pořadí na stránce od 0.
+  function candidates(spec) {
+    var list = document.querySelectorAll(spec.selector || defaultSelector(spec)), out = [];
+    for (var i = 0; i < list.length; i++) {
+      if (!spec.label || fieldLabel(list[i]) === norm(spec.label)) out.push(list[i]);
+    }
+    return out;
+  }
+
   function matchField(el, spec) {
     if (!el || !el.matches || !spec) return false;
     var key = el.getAttribute('data-config-key');
     if (key && spec.key) return key === spec.key;
     if (!el.matches(spec.selector || defaultSelector(spec))) return false;
+    if (spec.nth != null) return candidates(spec)[spec.nth] === el;
     if (spec.label) return fieldLabel(el) === norm(spec.label);
     return true;
   }
@@ -170,9 +181,7 @@
       var byKey = document.querySelector('[data-config-key="' + spec.key + '"]');
       if (byKey) return byKey;
     }
-    var list = document.querySelectorAll(spec.selector || defaultSelector(spec));
-    for (var i = 0; i < list.length; i++) if (matchField(list[i], spec)) return list[i];
-    return null;
+    return candidates(spec)[spec.nth || 0] || null;
   }
 
   // Výběr ze čtverečků (např. barva produktu): obal pole + zvolená položka má třídu item-active.
@@ -274,7 +283,8 @@
       var spec = fields[name];
       if (spec.type === 'photo' || spec.type === 'photos') continue;
       if (spec.type === 'swatch') { out[name] = this.values[name] || spec.fallback || ''; continue; }
-      var el = this.values[name] ? null : findField(spec);
+      // usePlaceholder: false = nápověda pole je obecná ("Text"), místo ní ukázkový text šablony
+      var el = this.values[name] || spec.usePlaceholder === false ? null : findField(spec);
       out[name] = this.values[name] || (el && el.placeholder) || spec.fallback || '';
     }
     return out;

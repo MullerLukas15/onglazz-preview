@@ -645,6 +645,185 @@
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Svíčky s fotkou (Klasická, Polaroid, Pink, Pastel, Moon)
+  // Štítek je na válci: vodorovné hrany fotky i řádky textu jsou uprostřed níž než po
+  // stranách. "sag" = o kolik je střed hrany níž než rohy, "bend" = o kolik jsou konce
+  // řádku výš než střed ve vzdálenosti 300 px od osy svíčky. Písmena ke krajům se
+  // navíc zužují, jak se štítek stáčí dozadu (poloměr válce CANDLE_RADIUS).
+  // Athelas a Brush Script MT nejsou webová písma: kdo je má v zařízení (Apple, Windows
+  // s Office), uvidí je, ostatním se ukážou podobná písma z Google Fonts.
+  // ---------------------------------------------------------------------------
+  var CANDLE_AXIS = 627;
+  var CANDLE_RADIUS = 338;
+  var CANDLE_CSS = 'https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;700&family=Yesteryear&display=swap';
+  var ATHELAS = '"Athelas", "Crimson Pro", Georgia, serif';
+  var BRUSH = '"Brush Script MT", "Yesteryear", cursive';
+  var SCHOOLBOOK = '"Century Schoolbook", Georgia, "Times New Roman", serif';
+
+  // Fotka jako obdélník s prohnutou horní a spodní hranou.
+  function labelRect(x0, x1, top, sagTop, bottom, sagBottom) {
+    var cx = (x0 + x1) / 2;
+    return {
+      shape: 'path', x: x0, y: top, w: x1 - x0, h: bottom + sagBottom - top,
+      path: function (ctx) {
+        ctx.moveTo(x0, top);
+        ctx.quadraticCurveTo(cx, top + 2 * sagTop, x1, top);
+        ctx.lineTo(x1, bottom);
+        ctx.quadraticCurveTo(cx, bottom + 2 * sagBottom, x0, bottom);
+        ctx.closePath();
+      }
+    };
+  }
+
+  // Fotka jako oblouk (Pastel): nahoře půlelipsa, dole prohnutá hrana.
+  function labelArch(x0, x1, top, ry, bottom, sagBottom) {
+    var cx = (x0 + x1) / 2, hw = (x1 - x0) / 2;
+    return {
+      shape: 'path', x: x0, y: top, w: x1 - x0, h: bottom + sagBottom - top,
+      path: function (ctx) {
+        ctx.ellipse(cx, top + ry, hw, ry, 0, Math.PI, 2 * Math.PI);
+        ctx.lineTo(x1, bottom);
+        ctx.quadraticCurveTo(cx, bottom + 2 * sagBottom, x0, bottom);
+        ctx.closePath();
+      }
+    };
+  }
+
+  // Řádek textu po obvodu svíčky: každé písmeno posunuté a natočené podle zakřivení.
+  // Dlouhý text se zmenší, aby se vešel do maxWidth.
+  function candleText(ctx, text, o) {
+    if (!text) return;
+    var size = o.size;
+    for (; size > 16; size -= 1) {
+      ctx.font = o.weight + ' ' + size + 'px ' + o.font;
+      if (ctx.measureText(text).width <= o.maxWidth) break;
+    }
+    ctx.save();
+    ctx.font = o.weight + ' ' + size + 'px ' + o.font;
+    ctx.fillStyle = o.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    var chars = Array.from(text), total = ctx.measureText(text).width;
+    var x = o.align === 'left' ? o.x : o.x - total / 2, adv = 0;
+    for (var i = 0; i < chars.length; i++) {
+      var next = ctx.measureText(chars.slice(0, i + 1).join('')).width; // se zachovaným vyrovnáním dvojic
+      // poloha na rozvinutém štítku → průmět na válec
+      var th = (x + (adv + next) / 2 - CANDLE_AXIS) / CANDLE_RADIUS;
+      var cx = CANDLE_AXIS + CANDLE_RADIUS * Math.sin(th), d = (cx - CANDLE_AXIS) / 300;
+      ctx.save();
+      ctx.translate(cx, o.y - o.bend * d * d);
+      ctx.rotate(Math.atan(-2 * o.bend * d / 300));
+      ctx.scale(Math.cos(th), 1);
+      ctx.fillText(chars[i], 0, 0);
+      ctx.restore();
+      adv = next;
+    }
+    ctx.restore();
+  }
+
+  function candlePlaceholder(ctx, b) {
+    var g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    g.addColorStop(0, '#d9dde1');
+    g.addColorStop(1, '#a9b0b7');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '600 30px "Proxima Nova", "Montserrat", sans-serif';
+    ctx.fillText('Nahrajte fotku', b.x + b.w / 2, b.y + b.h / 2);
+  }
+
+  function textField(key, fallback, nth) {
+    var f = { type: 'text', key: key, label: 'Text', fallback: fallback, maxLength: 35, usePlaceholder: false };
+    if (nth != null) f.nth = nth;
+    return f;
+  }
+
+  // lines: [{ field, x, y, size, weight, font, color, align, maxWidth, bend }]
+  function makeCandle(o) {
+    return {
+      background: o.background,
+      siteImage: o.siteImage,
+      size: 1254,
+      photoArea: o.photo,
+      fields: o.fields,
+      css: [CANDLE_CSS],
+      fonts: ['400 40px ' + ATHELAS, '700 40px ' + ATHELAS, '400 40px ' + BRUSH, '400 40px ' + SCHOOLBOOK,
+        '600 30px "Proxima Nova", "Montserrat", sans-serif'],
+      draw: function (ctx, s) {
+        ctx.drawImage(s.background, 0, 0, s.size, s.size);
+        H.drawPhoto(ctx, s.area, s.photo, s.view, candlePlaceholder);
+        (o.lines || []).forEach(function (l) { candleText(ctx, s.texts[l.field], l); });
+      }
+    };
+  }
+
+  var svickaKlasicka = makeCandle({
+    background: 'images/svicka-klasicka.webp',
+    siteImage: '/api/public-images/914/data',
+    photo: labelRect(347, 907, 391.5, 12.5, 951.5, 26),
+    fields: { photo: { type: 'photo', key: 'svicka-klasicka-fotka-CZ' } }
+  });
+
+  var svickaPolaroid = makeCandle({
+    background: 'images/svicka-polaroid.webp',
+    siteImage: '/api/public-images/917/data',
+    photo: labelRect(341, 915, 362.5, 14, 829.5, 25),
+    fields: {
+      text: textField('svicka-pastel,polaroid-text-CZ', 'S tebou je mi dobře.'),
+      photo: { type: 'photo', key: 'svicka-pastel,polaroid-fotka-CZ' }
+    },
+    lines: [{ field: 'text', x: 628, y: 920.75, size: 69.75, weight: 400, font: BRUSH, color: '#1b1d2a', maxWidth: 520, bend: 14.4 }]
+  });
+
+  var svickaPink = makeCandle({
+    background: 'images/svicka-pink.webp',
+    siteImage: '/api/public-images/918/data',
+    photo: labelRect(316, 938, 564.5, 17, 966.5, 38),
+    fields: {
+      line1: textField('svicka-pink,moon-text-1-CZ', 'Babičko,', 0),
+      line2: textField('svicka-pink,moon-text-2-CZ', 'miluji tě nadevše.', 1),
+      photo: { type: 'photo', key: 'svicka-pink,moon-fotka-CZ' }
+    },
+    lines: [
+      { field: 'line1', x: 330, y: 481, size: 102, weight: 700, font: ATHELAS, color: '#97344d', align: 'left', maxWidth: 600, bend: 10.5 },
+      { field: 'line2', x: 328, y: 551, size: 69.5, weight: 400, font: ATHELAS, color: '#a73d5b', align: 'left', maxWidth: 600, bend: 13.85 }
+    ]
+  });
+
+  var svickaPastel = makeCandle({
+    background: 'images/svicka-pastel.webp',
+    siteImage: '/api/public-images/916/data',
+    photo: labelArch(383, 867.5, 376.5, 229.5, 837.5, 11),
+    fields: {
+      text: textField('svicka-pastel,polaroid-text-CZ', 'Díky, mami. Miluju tě'),
+      photo: { type: 'photo', key: 'svicka-pastel,polaroid-fotka-CZ' }
+    },
+    lines: [{ field: 'text', x: 627, y: 916.25, size: 51.25, weight: 400, font: SCHOOLBOOK, color: '#394629', maxWidth: 540, bend: 25.4 }]
+  });
+
+  var svickaMoon = makeCandle({
+    background: 'images/svicka-moon.webp',
+    siteImage: '/api/public-images/919/data',
+    photo: { shape: 'circle', cx: 626.25, cy: 635.25, r: 221 },
+    fields: {
+      line1: textField('svicka-pink,moon-text-1-CZ', 'Ty a já.', 0),
+      line2: textField('svicka-pink,moon-text-2-CZ', 'Náš příběh navěky.', 1),
+      photo: { type: 'photo', key: 'svicka-pink,moon-fotka-CZ' }
+    },
+    lines: [
+      { field: 'line1', x: 627, y: 911, size: 66.75, weight: 700, font: ATHELAS, color: '#dbdbd7', maxWidth: 500, bend: 30 },
+      { field: 'line2', x: 627, y: 971, size: 59.25, weight: 400, font: ATHELAS, color: '#dbdbd7', maxWidth: 500, bend: 30 }
+    ]
+  });
+
+  P.register('svicka-klasicka', svickaKlasicka);
+  P.register('svicka-polaroid', svickaPolaroid);
+  P.register('svicka-pink', svickaPink);
+  P.register('svicka-pastel', svickaPastel);
+  P.register('svicka-moon', svickaMoon);
   P.register('sklenena-banka', sklenenaBanka);
   P.register('kostickova-fotka-cerna', kostickaCerna);
   P.register('kostickova-fotka-cervena', kostickaCervena);
