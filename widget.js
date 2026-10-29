@@ -303,7 +303,26 @@
       size: T.size
     });
     ctx.restore();
+    if (!this._exporting) this._drawActive(ctx, L.areas);
     this._updateTools();
+  };
+
+  // Více fotek: žlutá linka uvnitř okraje fotky, se kterou zákazník právě hýbe / přibližuje.
+  // Do náhledu k objednávce se nekreslí.
+  Preview.prototype._drawActive = function (ctx, areas) {
+    var A = areas[this.active], s = this.slots[this.active];
+    if (areas.length < 2 || !A || !s || !s.img) return;
+    var w = this.tpl.size * 0.0065;
+    ctx.save();
+    areaPath(ctx, A);
+    ctx.clip();
+    areaPath(ctx, A);
+    ctx.lineWidth = w * 2;  // polovina čáry leží mimo ořez, uvnitř zůstane w
+    ctx.strokeStyle = 'rgba(245,197,66,0.95)';
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = w;
+    ctx.stroke();
+    ctx.restore();
   };
 
   Preview.prototype._updateTools = function () {
@@ -365,16 +384,20 @@
     img.src = url;
   };
 
-  // Více fotek: pořadí a mazání přebíráme z formuláře e-shopu (img.photo s ?name=…).
+  // Pořadí a mazání fotek přebíráme z formuláře e-shopu (img.photo s ?name=…, křížek maže).
+  // Platí pro jednu i více fotek. Dokud formulář žádnou nahranou fotku neukázal (např. ukázková
+  // stránka bez e-shopu), lokální fotky necháváme, jak jsou.
   Preview.prototype.syncPhotos = function () {
     var name = this._photoFieldName(), spec = name && this.tpl.fields[name];
-    if (!spec || spec.type !== 'photos') return;
+    if (!spec) return;
     var input = findField(spec), box = input && input.parentElement;
     if (!box) return;
     var names = Array.prototype.map.call(box.querySelectorAll('img.photo'), function (im) {
       var m = (im.getAttribute('src') || '').match(/[?&]name=([^&]+)/);
       return m ? decodeURIComponent(m[1]) : (im.getAttribute('alt') || '');
     }).filter(Boolean);
+    if (names.length) this._formPhotos = true;
+    if (!this._formPhotos) return;
     var old = this.slots, used = [], self = this, now = Date.now();
     var next = names.map(function (n) {
       var s = old.filter(function (o) { return used.indexOf(o) < 0 && (o.key === n || (o.fileName && n.slice(-o.fileName.length) === o.fileName && o.key.indexOf('local:') === 0)); })[0];
@@ -384,9 +407,11 @@
       return slot;
     });
     // lokální fotky, které se ještě nahrávají (nejvýš minutu), necháme na konci
-    old.forEach(function (o) {
-      if (used.indexOf(o) < 0 && o.key.indexOf('local:') === 0 && now - o.added < 60000) next.push(o);
+    var pending = old.filter(function (o) {
+      return used.indexOf(o) < 0 && o.key.indexOf('local:') === 0 && now - o.added < 60000;
     });
+    // jedna fotka: právě vybraná nová fotka má přednost před tou, kterou e-shop ještě ukazuje
+    next = spec.type === 'photo' ? pending.concat(next).slice(0, 1) : next.concat(pending);
     var changed = next.length !== old.length || next.some(function (s, i) { return s !== old[i]; });
     this.slots = next;
     if (changed) this.render();
@@ -427,9 +452,12 @@
   };
 
   Preview.prototype.toBlob = function (type, quality) {
-    var c = this.canvas;
+    var c = this.canvas, self = this;
+    this._exporting = true;
     this.render();
-    return new Promise(function (resolve) { c.toBlob(resolve, type || 'image/jpeg', quality || 0.9); });
+    return new Promise(function (resolve) {
+      c.toBlob(function (b) { self._exporting = false; self.render(); resolve(b); }, type || 'image/jpeg', quality || 0.9);
+    });
   };
 
   // Výřezy fotek, které jsou opravdu vidět (jen sloty, pro které má rozvržení plochu).
