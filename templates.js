@@ -592,6 +592,60 @@
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Skleněná baňka (1–3 kusy)
+  // Podle "Počet baněk" se přepne scéna: 1 = baňka na stromečku, 2 a 3 = baňky
+  // na stužkách. Fotky se přiřazují zleva doprava v pořadí nahrání ve formuláři.
+  // Překryv (overlay) vrací přes fotku stužku a kovové očko.
+  // ---------------------------------------------------------------------------
+  var BANKA_LAYOUTS = {
+    1: { areas: [[620, 718, 302]] },
+    2: { areas: [[488, 452, 150], [760, 708, 156]] },
+    3: { areas: [[205, 686, 154], [488, 452, 150], [1063, 534, 147]] }
+  };
+
+  function bankaPlaceholder(n) {
+    return function (ctx, b) {
+      var g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+      g.addColorStop(0, '#e1e5e9');
+      g.addColorStop(1, '#a0a8af');
+      ctx.fillStyle = g;
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.97)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '600 ' + Math.round(b.w * 0.075) + 'px "Proxima Nova", "Montserrat", sans-serif';
+      ctx.fillText(n ? 'Fotka ' + n : 'Nahrajte fotku', b.x + b.w / 2, b.y + b.h / 2);
+    };
+  }
+
+  var sklenenaBanka = {
+    size: 1254,
+    fields: {
+      count: { type: 'swatch', label: 'Počet baněk:', valueFrom: 'index', fallback: '1' },
+      // jméno pole i klíč se mění podle počtu (fotografii / fotografie), proto jen podle inputu
+      photos: { type: 'photos', selector: 'input[type="file"]' }
+    },
+    fonts: ['600 22px "Proxima Nova", "Montserrat", sans-serif'],
+    layout: function (values) {
+      var n = BANKA_LAYOUTS[values.count] ? values.count : '1';
+      return {
+        background: 'images/sklenena-banka-' + n + '.webp',
+        overlay: 'images/sklenena-banka-' + n + '-overlay.png',
+        areas: BANKA_LAYOUTS[n].areas.map(function (a) { return { shape: 'circle', cx: a[0], cy: a[1], r: a[2] }; })
+      };
+    },
+    draw: function (ctx, s) {
+      ctx.drawImage(s.background, 0, 0, s.size, s.size);
+      var multi = s.areas.length > 1;
+      s.areas.forEach(function (area, i) {
+        H.drawPhoto(ctx, area, s.photos[i], s.views[i] || { x: 0, y: 0, zoom: 1 }, bankaPlaceholder(multi ? i + 1 : 0));
+      });
+      if (s.overlay) ctx.drawImage(s.overlay, 0, 0, s.size, s.size);
+    }
+  };
+
+  P.register('sklenena-banka', sklenenaBanka);
   P.register('kostickova-fotka-cerna', kostickaCerna);
   P.register('kostickova-fotka-cervena', kostickaCervena);
   P.register('kostickova-fotka-klasicka', kostickaKlasicka);

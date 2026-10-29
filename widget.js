@@ -192,6 +192,11 @@
     var box = findSwatchBox(spec);
     var active = box && box.querySelector(spec.activeSelector || '.item-active');
     if (!active) return '';
+    // valueFrom 'index': pořadí zvolené položky od 1 (např. počet kusů)
+    if (spec.valueFrom === 'index') {
+      var items = Array.prototype.slice.call(box.querySelectorAll(spec.itemSelector || '.item-w'));
+      return String(items.indexOf(active) + 1);
+    }
     var fill = active.querySelector('[style*="background"]') || active;
     return getComputedStyle(fill).backgroundColor || '';
   }
@@ -199,35 +204,42 @@
   // ---------------------------------------------------------------------------
   // Instance náhledu
   // ---------------------------------------------------------------------------
+  // Fotky zákazníka jsou "sloty": každý má obrázek a vlastní posun/přiblížení.
+  // Šablona s jednou fotkou (type 'photo') má jeden slot, s více fotkami (type 'photos')
+  // jich má tolik, kolik je nahraných fotek ve formuláři e-shopu.
+  function newView() { return { x: 0, y: 0, zoom: 1 }; }
+
   function Preview(container, id, tpl) {
     this.id = id;
     this.tpl = tpl;
     this.container = container;
     this.values = {};
-    this.photo = null;
-    this.background = null;
-    this.view = { x: 0, y: 0, zoom: 1 };
+    this.slots = [];        // [{ key, img, view }]
+    this.pending = [];      // lokální soubory, které e-shop ještě nahrává
+    this.active = 0;        // slot, kterému patří posuvník přiblížení
+    this.images = {};       // načtené podklady šablony podle cesty
 
     container.hidden = false;
     container.classList.add('ogp');
     container.innerHTML =
       '<canvas class="ogp-canvas" width="' + tpl.size + '" height="' + tpl.size + '"></canvas>' +
       '<div class="ogp-tools" hidden>' +
-      '  <label>Přiblížení <input type="range" min="1" max="3" step="0.01" value="1"></label>' +
+      '  <label><span class="ogp-zoom-label">Přiblížení</span> <input type="range" min="1" max="3" step="0.01" value="1"></label>' +
       '  <span class="ogp-hint">Fotku můžete posunout tažením</span>' +
       '</div>';
     this.canvas = container.querySelector('canvas');
     this.ctx = this.canvas.getContext('2d');
     this.tools = container.querySelector('.ogp-tools');
     this.zoomInput = this.tools.querySelector('input');
+    this.zoomLabel = this.tools.querySelector('.ogp-zoom-label');
 
     this._bindPointer();
     this.zoomInput.addEventListener('input', this._onZoom.bind(this));
     this.readForm();
+    this.syncPhotos();
 
     var self = this;
-    // bez hostingu (samostatná záložka) se použije fotka přímo z e-shopu
-    loadImage(BASE ? tpl.background : (tpl.siteImage || tpl.background)).then(function (img) { self.background = img; self.render(); }, console.warn);
+    this.render();
     if (document.fonts && document.fonts.load && tpl.fonts) {
       Promise.all((tpl.css || []).map(loadCss)).then(function () {
         return Promise.all(tpl.fonts.map(function (f) {
@@ -237,12 +249,30 @@
     }
   }
 
+  // Rozvržení: podklad, volitelný překryv a plochy pro fotky. Šablona ho může měnit
+  // podle hodnot formuláře (např. počet baněk), jinak platí background + photoArea.
+  Preview.prototype.layout = function () {
+    var T = this.tpl;
+    if (T.layout) return T.layout(this.texts());
+    return { background: BASE ? T.background : (T.siteImage || T.background), areas: [T.photoArea] };
+  };
+
+  Preview.prototype.image = function (path) {
+    if (!path) return null;
+    var self = this, rec = this.images[path];
+    if (!rec) {
+      rec = this.images[path] = { img: null };
+      loadImage(path).then(function (img) { rec.img = img; self.render(); }, console.warn);
+    }
+    return rec.img;
+  };
+
   // Hodnoty pro vykreslení: co zákazník napsal / vybral → placeholder z e-shopu → záložní hodnota šablony.
   Preview.prototype.texts = function () {
     var out = {}, fields = this.tpl.fields;
     for (var name in fields) {
       var spec = fields[name];
-      if (spec.type === 'photo') continue;
+      if (spec.type === 'photo' || spec.type === 'photos') continue;
       if (spec.type === 'swatch') { out[name] = this.values[name] || spec.fallback || ''; continue; }
       var el = this.values[name] ? null : findField(spec);
       out[name] = this.values[name] || (el && el.placeholder) || spec.fallback || '';
@@ -251,47 +281,83 @@
   };
 
   Preview.prototype.render = function () {
-    if (!this.background) return;
+    var L = this.layout(), bg = this.image(L.background);
+    if (!bg) return;
     var ctx = this.ctx, T = this.tpl;
+    var photos = this.slots.map(function (s) { return s.img; });
+    var views = this.slots.map(function (s) { return s.view; });
+    this.areas = L.areas;
     ctx.save();
     ctx.clearRect(0, 0, T.size, T.size);
     T.draw(ctx, {
-      background: this.background,
-      photo: this.photo,
-      view: this.view,
-      area: T.photoArea,
+      background: bg,
+      overlay: this.image(L.overlay),
+      photo: photos[0] || null,
+      view: views[0] || newView(),
+      area: L.areas[0],
+      photos: photos,
+      views: views,
+      areas: L.areas,
+      active: this.active,
       texts: this.texts(),
       size: T.size
     });
     ctx.restore();
+    this._updateTools();
+  };
+
+  Preview.prototype._updateTools = function () {
+    var n = Math.min(this.slots.length, (this.areas || []).length);
+    this.tools.hidden = !n;
+    this.canvas.style.touchAction = n ? 'none' : 'pan-y';
+    if (this.active >= n) this.active = Math.max(0, n - 1);
+    var multi = (this.areas || []).length > 1;
+    var label = multi ? 'Přiblížení fotky ' + (this.active + 1) : 'Přiblížení';
+    // měnit jen při změně: zápis do DOM by znovu spustil hlídání stránky
+    if (this.zoomLabel.textContent !== label) this.zoomLabel.textContent = label;
+    var v = this.slots[this.active] && this.slots[this.active].view;
+    if (v) this.zoomInput.value = v.zoom;
   };
 
   Preview.prototype.set = function (patch) {
     var fields = this.tpl.fields;
     for (var name in patch) {
       if (!fields[name]) continue;
-      if (fields[name].type === 'photo') { if (patch[name] instanceof Blob) this.setPhoto(patch[name]); continue; }
+      var t = fields[name].type;
+      if (t === 'photo' || t === 'photos') {
+        var files = [].concat(patch[name]).filter(function (f) { return f instanceof Blob; });
+        if (t === 'photo') this.slots = [];
+        files.forEach(this._addLocal, this);
+        continue;
+      }
       var max = fields[name].maxLength || 200;
       this.values[name] = String(patch[name] || '').slice(0, max);
     }
     this.render();
   };
 
+  // Dřívější jméno (jedna fotka): nahradí fotku v prvním slotu.
   Preview.prototype.setPhoto = function (file) {
-    var self = this;
+    var p = {};
+    p[this._photoFieldName() || 'photo'] = file;
+    this.set(p);
+  };
+
+  Preview.prototype._photoFieldName = function () {
+    var f = this.tpl.fields;
+    for (var n in f) if (f[n].type === 'photo' || f[n].type === 'photos') return n;
+    return null;
+  };
+
+  // Lokální soubor zobrazíme hned; až ho e-shop nahraje a ukáže ve formuláři,
+  // syncPhotos ho spáruje se serverovým jménem (to končí původním jménem souboru).
+  Preview.prototype._addLocal = function (file) {
     if (!file || !/^image\//.test(file.type)) return;
-    var url = URL.createObjectURL(file);
-    var img = new Image();
-    img.onload = function () {
-      URL.revokeObjectURL(url);
-      self.photo = img;
-      self.view = { x: 0, y: 0, zoom: 1 };
-      self.zoomInput.value = 1;
-      self.tools.hidden = false;
-      // s nahranou fotkou patří tažení po náhledu posunu fotky, ne scrollování stránky
-      self.canvas.style.touchAction = 'none';
-      self.render();
-    };
+    var self = this, url = URL.createObjectURL(file), img = new Image();
+    var slot = { key: 'local:' + file.name, fileName: file.name, img: null, view: newView(), added: Date.now() };
+    this.slots.push(slot);
+    this.active = this.slots.length - 1;
+    img.onload = function () { URL.revokeObjectURL(url); slot.img = img; self.render(); };
     img.onerror = function () {
       URL.revokeObjectURL(url);
       console.warn('OnglazzPreview: fotku se nepodařilo načíst (formát ' + file.type + ')');
@@ -299,11 +365,39 @@
     img.src = url;
   };
 
+  // Více fotek: pořadí a mazání přebíráme z formuláře e-shopu (img.photo s ?name=…).
+  Preview.prototype.syncPhotos = function () {
+    var name = this._photoFieldName(), spec = name && this.tpl.fields[name];
+    if (!spec || spec.type !== 'photos') return;
+    var input = findField(spec), box = input && input.parentElement;
+    if (!box) return;
+    var names = Array.prototype.map.call(box.querySelectorAll('img.photo'), function (im) {
+      var m = (im.getAttribute('src') || '').match(/[?&]name=([^&]+)/);
+      return m ? decodeURIComponent(m[1]) : (im.getAttribute('alt') || '');
+    }).filter(Boolean);
+    var old = this.slots, used = [], self = this, now = Date.now();
+    var next = names.map(function (n) {
+      var s = old.filter(function (o) { return used.indexOf(o) < 0 && (o.key === n || (o.fileName && n.slice(-o.fileName.length) === o.fileName && o.key.indexOf('local:') === 0)); })[0];
+      if (s) { used.push(s); s.key = n; return s; }
+      var slot = { key: n, img: null, view: newView() };
+      loadImage('/api/file?name=' + encodeURIComponent(n)).then(function (img) { slot.img = img; self.render(); }, console.warn);
+      return slot;
+    });
+    // lokální fotky, které se ještě nahrávají (nejvýš minutu), necháme na konci
+    old.forEach(function (o) {
+      if (used.indexOf(o) < 0 && o.key.indexOf('local:') === 0 && now - o.added < 60000) next.push(o);
+    });
+    var changed = next.length !== old.length || next.some(function (s, i) { return s !== old[i]; });
+    this.slots = next;
+    if (changed) this.render();
+  };
+
   Preview.prototype.readForm = function () {
     var fields = this.tpl.fields;
     for (var name in fields) {
-      if (fields[name].type === 'photo') continue;
-      if (fields[name].type === 'swatch') { this.values[name] = readSwatch(fields[name]); continue; }
+      var t = fields[name].type;
+      if (t === 'photo' || t === 'photos') continue;
+      if (t === 'swatch') { this.values[name] = readSwatch(fields[name]); continue; }
       var el = findField(fields[name]);
       if (el && el.value) this.values[name] = el.value;
     }
@@ -323,9 +417,11 @@
   Preview.prototype.onField = function (el) {
     var fields = this.tpl.fields;
     for (var name in fields) {
-      if (fields[name].type === 'swatch' || !matchField(el, fields[name])) continue;
-      if (fields[name].type === 'photo') { if (el.files && el.files[0]) this.setPhoto(el.files[0]); }
-      else { var p = {}; p[name] = el.value; this.set(p); }
+      var t = fields[name].type;
+      if (t === 'swatch' || !matchField(el, fields[name])) continue;
+      if (t === 'photo' || t === 'photos') {
+        if (el.files && el.files[0]) { var p = {}; p[name] = Array.prototype.slice.call(el.files); this.set(p); }
+      } else { var q = {}; q[name] = el.value; this.set(q); }
       return;
     }
   };
@@ -336,62 +432,87 @@
     return new Promise(function (resolve) { c.toBlob(resolve, type || 'image/jpeg', quality || 0.9); });
   };
 
-  Preview.prototype.getCrop = function () {
-    return this.photo ? cropOf(this.tpl.photoArea, this.photo, this.view) : null;
+  // Výřezy fotek, které jsou opravdu vidět (jen sloty, pro které má rozvržení plochu).
+  Preview.prototype.getCrops = function () {
+    var areas = this.layout().areas;
+    return this.slots.slice(0, areas.length).map(function (s, i) {
+      return s.img ? cropOf(areas[i], s.img, s.view) : null;
+    });
   };
 
-  // Oříznutá fotka v plném rozlišení původní fotky (nejvýš maxSize px na delší straně).
-  Preview.prototype.croppedPhotoBlob = function (maxSize) {
-    var crop = this.getCrop();
-    if (!crop) return Promise.resolve(null);
+  Preview.prototype.getCrop = function () { return this.getCrops()[0] || null; };
+
+  function cropBlob(img, crop, maxSize) {
+    if (!img || !crop) return Promise.resolve(null);
     var k = Math.min(1, (maxSize || 3000) / Math.max(crop.width, crop.height));
     var c = document.createElement('canvas');
     c.width = Math.round(crop.width * k);
     c.height = Math.round(crop.height * k);
-    c.getContext('2d').drawImage(this.photo, crop.x, crop.y, crop.width, crop.height, 0, 0, c.width, c.height);
+    c.getContext('2d').drawImage(img, crop.x, crop.y, crop.width, crop.height, 0, 0, c.width, c.height);
     return new Promise(function (resolve) { c.toBlob(resolve, 'image/jpeg', 0.92); });
+  }
+
+  // Oříznutá první fotka v plném rozlišení (nejvýš maxSize px na delší straně).
+  Preview.prototype.croppedPhotoBlob = function (maxSize) {
+    return cropBlob(this.slots[0] && this.slots[0].img, this.getCrop(), maxSize);
   };
 
-  // Vše, co se posílá s objednávkou ke kontrole: náhled, oříznutá fotka, ořez a texty.
+  // Vše, co se posílá s objednávkou ke kontrole: náhled, oříznuté fotky, ořezy a texty.
+  // photo/crop = první fotka (jednofotkové produkty), photos/crops = všechny.
   Preview.prototype.exportForOrder = function () {
-    var self = this, crop = this.getCrop();
-    return Promise.all([this.toBlob('image/jpeg', 0.9), this.croppedPhotoBlob()]).then(function (r) {
+    var self = this, crops = this.getCrops();
+    var blobs = crops.map(function (c, i) { return cropBlob(self.slots[i].img, c); });
+    return Promise.all([this.toBlob('image/jpeg', 0.9)].concat(blobs)).then(function (r) {
+      var info = crops.map(function (c, i) {
+        var s = self.slots[i];
+        return c && {
+          x: Math.round(c.x), y: Math.round(c.y), width: Math.round(c.width), height: Math.round(c.height),
+          zoom: s.view.zoom, imageWidth: s.img.width, imageHeight: s.img.height
+        };
+      });
       return {
         template: self.id,
         preview: r[0],
-        photo: r[1],
-        crop: crop && {
-          x: Math.round(crop.x), y: Math.round(crop.y),
-          width: Math.round(crop.width), height: Math.round(crop.height),
-          zoom: self.view.zoom, imageWidth: self.photo.width, imageHeight: self.photo.height
-        },
+        photo: r[1] || null,
+        crop: info[0] || null,
+        photos: r.slice(1),
+        crops: info,
         texts: self.values
       };
     });
   };
 
   Preview.prototype._onZoom = function () {
-    this.view.zoom = parseFloat(this.zoomInput.value);
+    var s = this.slots[this.active];
+    if (!s) return;
+    s.view.zoom = parseFloat(this.zoomInput.value);
     this.render();
   };
 
-  // Fotku lze posouvat jen tažením uvnitř oblasti, jinde se stránka normálně posouvá.
+  // Fotku lze posouvat jen tažením uvnitř její plochy, jinde se stránka normálně posouvá.
   Preview.prototype._bindPointer = function () {
     var self = this, start = null;
     this.canvas.style.touchAction = 'pan-y';
     this.canvas.addEventListener('pointerdown', function (e) {
-      if (!self.photo) return;
       var rect = self.canvas.getBoundingClientRect(), k = self.tpl.size / rect.width;
-      var x = (e.clientX - rect.left) * k, y = (e.clientY - rect.top) * k, b = areaBox(self.tpl.photoArea);
-      if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return;
-      start = { x: e.clientX, y: e.clientY, vx: self.view.x, vy: self.view.y, k: k };
+      var x = (e.clientX - rect.left) * k, y = (e.clientY - rect.top) * k;
+      var areas = self.areas || [], hit = -1;
+      for (var i = 0; i < areas.length && i < self.slots.length; i++) {
+        var b = areaBox(areas[i]);
+        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h && self.slots[i].img) { hit = i; break; }
+      }
+      if (hit < 0) return;
+      self.active = hit;
+      var v = self.slots[hit].view;
+      start = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y, k: k, view: v };
       self.canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
+      self.render();
     });
     this.canvas.addEventListener('pointermove', function (e) {
       if (!start) return;
-      self.view.x = start.vx + (e.clientX - start.x) * start.k;
-      self.view.y = start.vy + (e.clientY - start.y) * start.k;
+      start.view.x = start.vx + (e.clientX - start.x) * start.k;
+      start.view.y = start.vy + (e.clientY - start.y) * start.k;
       self.render();
     });
     ['pointerup', 'pointercancel'].forEach(function (ev) {
@@ -434,6 +555,8 @@
       el.__ogp = new Preview(el, id, tpl);
       instances.push(el.__ogp);
     });
+    // e-shop přidal nebo smazal nahranou fotku → přeneseme do náhledu
+    instances.forEach(function (p) { p.syncPhotos(); });
   }
 
   function onFieldEvent(e) {
@@ -449,10 +572,10 @@
   new MutationObserver(function () {
     if (swatchQueued || !instances.length) return;
     swatchQueued = true;
-    requestAnimationFrame(function () {
+    setTimeout(function () {   // časovač, ne requestAnimationFrame: běží i ve skryté záložce
       swatchQueued = false;
       instances.forEach(function (p) { p.refreshSwatches(); });
-    });
+    }, 0);
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true });
 
   window.addEventListener('onglazz:input', function (e) {
