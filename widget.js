@@ -290,11 +290,40 @@
     return out;
   };
 
+  // Fotka z mobilu mívá i 4000 px; pro kreslení náhledu stačí zmenšená kopie (plátno má
+  // 1254 px). Export k objednávce dál bere originál (slot.img).
+  var PREVIEW_MAX = 1600;
+  function previewImage(slot) {
+    var img = slot.img;
+    if (!img) return null;
+    if (slot._previewOf !== img) {
+      slot._previewOf = img;
+      var k = PREVIEW_MAX / Math.max(img.width, img.height);
+      if (k < 1) {
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width * k);
+        c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        slot._preview = c;
+      } else {
+        slot._preview = img;
+      }
+    }
+    return slot._preview;
+  }
+
+  // Při tažení a posuvníku stačí překreslit jednou za snímek obrazovky.
+  Preview.prototype.requestRender = function () {
+    var self = this;
+    if (this._frame) return;
+    this._frame = requestAnimationFrame(function () { self._frame = 0; self.render(); });
+  };
+
   Preview.prototype.render = function () {
     var L = this.layout(), bg = this.image(L.background);
     if (!bg) return;
     var ctx = this.ctx, T = this.tpl;
-    var photos = this.slots.map(function (s) { return s.img; });
+    var photos = this.slots.map(previewImage);
     var views = this.slots.map(function (s) { return s.view; });
     this.areas = L.areas;
     ctx.save();
@@ -524,7 +553,7 @@
     var s = this.slots[this.active];
     if (!s) return;
     s.view.zoom = parseFloat(this.zoomInput.value);
-    this.render();
+    this.requestRender();
   };
 
   // Fotku lze posouvat jen tažením uvnitř její plochy, jinde se stránka normálně posouvá.
@@ -551,7 +580,7 @@
       if (!start) return;
       start.view.x = start.vx + (e.clientX - start.x) * start.k;
       start.view.y = start.vy + (e.clientY - start.y) * start.k;
-      self.render();
+      self.requestRender();
     });
     ['pointerup', 'pointercancel'].forEach(function (ev) {
       self.canvas.addEventListener(ev, function () { start = null; });

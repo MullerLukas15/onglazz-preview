@@ -661,6 +661,7 @@
   // zúžení ke krajům: produktové fotky ho ukazují menší, než by odpovídalo poloměru
   // sklenice, proto má fotka i každý řádek vlastní "poloměr zúžení" (víc = méně zúžené)
   var CANDLE_PHOTO_RX = 450;
+  var STRIP = 6; // šířka proužku při ohýbání fotky (px)
   var CANDLE_CSS = 'https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;700&family=Yesteryear&display=swap';
   var ATHELAS = '"Athelas", "Crimson Pro", Georgia, serif';
   var BRUSH = '"Brush Script MT", "Yesteryear", cursive';
@@ -703,12 +704,15 @@
         ctx.save();
         if (o.clip) { ctx.beginPath(); o.clip(ctx); } else rectPath(ctx);
         ctx.clip();
-        // proužky 1 px široké (s přesahem proti švům), každý z odpovídajícího místa štítku
-        for (var x = Math.floor(o.x0) - 1; x <= Math.ceil(o.x1); x++) {
-          var ua = Math.max(0, unroll(x, RX) - u0), ub = Math.min(area.w, unroll(x + 1.5, RX) - u0);
+        // proužky 6 px široké (s přesahem proti švům), každý z odpovídajícího místa štítku;
+        // hrany fotky drží ořez, takže širší proužky nejsou vidět
+        for (var x = Math.floor(o.x0) - 1; x <= Math.ceil(o.x1); x += STRIP) {
+          var ua = Math.max(0, unroll(x, RX) - u0), ub = Math.min(area.w, unroll(x + STRIP + 0.5, RX) - u0);
           if (ub <= ua) continue;
-          var yt = candleEdge(x + 0.5, o.vTop, o.bTop), yb = candleEdge(x + 0.5, o.vBottom, o.bBottom);
-          ctx.drawImage(off, ua, 0, ub - ua, h, x, yt, 1.5, yb - yt);
+          // proužek sahá až k vyšší/nižší hraně na svých okrajích, ať u rohů nezůstane mezera
+          var yt = Math.min(candleEdge(x, o.vTop, o.bTop), candleEdge(x + STRIP, o.vTop, o.bTop));
+          var yb = Math.max(candleEdge(x, o.vBottom, o.bBottom), candleEdge(x + STRIP, o.vBottom, o.bBottom));
+          ctx.drawImage(off, ua, 0, ub - ua, h, x, yt, STRIP + 0.5, yb - yt);
         }
         ctx.restore();
       }
@@ -766,6 +770,7 @@
   }
 
   // lines: [{ field, x, y, b, size, weight, font, color, align, maxWidth }]
+  // Text na střed má x = střed fotky, aby byl vycentrovaný pod ní.
   function makeCandle(o) {
     var photo = candlePhoto(o.photo);
     return {
@@ -780,9 +785,28 @@
       draw: function (ctx, s) {
         ctx.drawImage(s.background, 0, 0, s.size, s.size);
         photo.draw(ctx, s.photo, s.view, candlePlaceholder);
-        (o.lines || []).forEach(function (l) { candleText(ctx, s.texts[l.field], l); });
+        ctx.drawImage(textLayer(s), 0, 0);
       }
     };
+
+    // Texty se při posouvání fotky nemění: vykreslí se jednou do vlastní vrstvy a ta se
+    // jen kopíruje. Znovu se kreslí po změně textu nebo po načtení písma (jiná šířka).
+    var layer = null, layerKey = null;
+    function textLayer(s) {
+      if (!layer) { layer = document.createElement('canvas'); layer.width = layer.height = s.size; }
+      var lctx = layer.getContext('2d');
+      var key = (o.lines || []).map(function (l) {
+        var t = s.texts[l.field] || '';
+        lctx.font = l.weight + ' ' + l.size + 'px ' + l.font;
+        return t + '|' + lctx.measureText(t).width;
+      }).join('\n');
+      if (key !== layerKey) {
+        layerKey = key;
+        lctx.clearRect(0, 0, s.size, s.size);
+        (o.lines || []).forEach(function (l) { candleText(lctx, s.texts[l.field], l); });
+      }
+      return layer;
+    }
   }
 
   // prohnutí hrany: b = (o kolik je střed hrany níž než rohy) / (1 − cos úhlu rohu)
@@ -801,7 +825,7 @@
       text: textField('svicka-pastel,polaroid-text-CZ', 'S tebou je mi dobře.'),
       photo: { type: 'photo', key: 'svicka-pastel,polaroid-fotka-CZ' }
     },
-    lines: [{ field: 'text', x: 640, y: 921, b: 47, rx: 800, size: 67.75, weight: 400, font: BRUSH, color: '#1b1d2a', maxWidth: 520 }]
+    lines: [{ field: 'text', x: 628, y: 921, b: 47, rx: 800, size: 67.75, weight: 400, font: BRUSH, color: '#1b1d2a', maxWidth: 520 }]
   });
 
   var svickaPink = makeCandle({
@@ -833,7 +857,7 @@
       text: textField('svicka-pastel,polaroid-text-CZ', 'Díky, mami. Miluju tě'),
       photo: { type: 'photo', key: 'svicka-pastel,polaroid-fotka-CZ' }
     },
-    lines: [{ field: 'text', x: 632.5, y: 916.25, b: 60.35, rx: 500, size: 50.25, weight: 400, font: SCHOOLBOOK, color: '#394629', maxWidth: 540 }]
+    lines: [{ field: 'text', x: 625.25, y: 916.25, b: 60.35, rx: 500, size: 50.25, weight: 400, font: SCHOOLBOOK, color: '#394629', maxWidth: 540 }]
   });
 
   var svickaMoon = makeCandle({
@@ -848,8 +872,8 @@
       line2: textField('svicka-pink,moon-text-2-CZ', 'Náš příběh navěky.', 1),
       photo: { type: 'photo', key: 'svicka-pink,moon-fotka-CZ' }
     },
-    lines: [{ field: 'line1', x: 632, y: 912, b: 60, rx: 500, size: 66.5, weight: 700, font: ATHELAS, color: '#dbdbd7', maxWidth: 500 },
-      { field: 'line2', x: 637, y: 970, b: 66, rx: 500, size: 58.25, weight: 400, font: ATHELAS, color: '#dbdbd7', maxWidth: 500 }]
+    lines: [{ field: 'line1', x: 626.25, y: 912, b: 60, rx: 500, size: 66.5, weight: 700, font: ATHELAS, color: '#dbdbd7', maxWidth: 500 },
+      { field: 'line2', x: 626.25, y: 970, b: 66, rx: 500, size: 58.25, weight: 400, font: ATHELAS, color: '#dbdbd7', maxWidth: 500 }]
   });
 
   P.register('svicka-klasicka', svickaKlasicka);
