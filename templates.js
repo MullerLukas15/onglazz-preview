@@ -596,12 +596,12 @@
   // Skleněná baňka (1–3 kusy)
   // Podle "Počet baněk" se přepne scéna: 1 = baňka na stromečku, 2 a 3 = baňky
   // na stužkách. Fotky se přiřazují zleva doprava v pořadí nahrání ve formuláři.
-  // Překryv (overlay) vrací přes fotku stužku a kovové očko.
+  // Překryv (overlay) vrací přes fotku skleněný okraj, stužku a kovové očko.
   // ---------------------------------------------------------------------------
   var BANKA_LAYOUTS = {
     1: { areas: [[620, 718, 302]] },
-    2: { areas: [[488, 452, 150], [760, 708, 156]] },
-    3: { areas: [[205, 686, 154], [488, 452, 150], [1063, 534, 147]] }
+    2: { areas: [[335.5, 595.2, 273.4], [929.3, 754.2, 281.4]] },
+    3: { areas: [[237.7, 443.7, 202.8], [622.1, 804.4, 249.2], [1015.6, 444.9, 204.5]] }
   };
 
   function bankaPlaceholder(n) {
